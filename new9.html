@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cyber Neon Grid Gallery</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Orbitron', sans-serif;
+      background-color: #000;
+      overflow-x: hidden;
+      color: #fff;
+    }
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background-image: linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+                        linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+      background-size: 3px 3px;
+      z-index: 0;
+      pointer-events: none;
+    }
+    .gallery-container {
+      padding: 40px 20px;
+      background: radial-gradient(ellipse at center, #111 0%, #000 100%);
+      min-height: 100vh;
+    }
+    .gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+      z-index: 2;
+    }
+    .gallery img {
+      width: 100%;
+      height: 200px;
+      object-fit: cover;
+      border-radius: 12px;
+      cursor: pointer;
+      opacity: 0;
+      transform: translateY(30px);
+      animation: fadeInUp 0.8s ease forwards;
+      filter: brightness(1.1) saturate(1.3);
+      box-shadow: 0 0 12px rgba(255, 255, 255, 0.1);
+      transition: all 0.3s ease;
+    }
+    .gallery img:hover {
+      transform: scale(1.05);
+      box-shadow: 0 0 40px rgba(0, 255, 255, 0.8);
+    }
+    .gallery img:nth-child(n) { animation-delay: calc(var(--i, 1) * 0.05s); }
+    @keyframes fadeInUp {
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0; top: 0;
+      width: 100vw; height: 100vh;
+      background-color: rgba(0, 0, 0, 0.95);
+      justify-content: center;
+      align-items: center;
+      opacity: 0;
+      transform: scale(0.95);
+      transition: all 0.3s ease;
+    }
+    .modal.show {
+      display: flex;
+      opacity: 1;
+      transform: scale(1);
+    }
+    .modal img {
+      max-width: 90%;
+      max-height: 90%;
+      border-radius: 10px;
+      cursor: grab;
+      transition: transform 0.3s ease;
+    }
+    .modal .close, .modal .arrow {
+      position: absolute;
+      top: 20px;
+      color: cyan;
+      font-size: 40px;
+      font-weight: bold;
+      cursor: pointer;
+      z-index: 1001;
+    }
+    .modal .close { right: 30px; }
+    .modal .arrow.left {
+      left: 20px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 50px;
+    }
+    .modal .arrow.right {
+      right: 20px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 50px;
+    }
+    .modal .close:hover, .arrow:hover { color: #f0f; }
+    .download-btn {
+      position: absolute;
+      bottom: 30px;
+      right: 30px;
+      background-color: #111;
+      color: #fff;
+      padding: 10px 18px;
+      font-size: 18px;
+      border-radius: 8px;
+      text-decoration: none;
+      z-index: 1001;
+      border: 1px solid #0ff;
+    }
+    .download-btn:hover {
+      background-color: #0ff;
+      color: #000;
+    }
+    canvas#particles {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="gallery-container">
+    <div class="gallery" id="gallery"></div>
+  </div>
+
+  <div class="modal" id="imageModal">
+    <span class="close" onclick="closeModal()">&times;</span>
+    <span class="arrow left" onclick="navigateModal(-1)">&#10094;</span>
+    <span class="arrow right" onclick="navigateModal(1)">&#10095;</span>
+    <img id="modalImage" src="" alt="Full view" />
+    <a id="downloadBtn" class="download-btn" href="#" download target="_blank">Download</a>
+  </div>
+
+  <canvas id="particles"></canvas>
+  <audio id="bgMusic" loop autoplay>
+    <source src="https://files.catbox.moe/7zrq8n.mp3" type="audio/mpeg" />
+    Your browser does not support the audio element.
+  </audio>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.0/jszip.min.js"></script>
+  <script>
+    const gallery = document.getElementById('gallery');
+    const modal = document.getElementById('imageModal');
+    const modalImg = document.getElementById('modalImage');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const bgMusic = document.getElementById('bgMusic');
+    let images = [];
+    let currentIndex = 0, scale = 1, translateX = 0, translateY = 0, startX = 0, startY = 0;
+
+    const zipUrl = "https://uc1fd28b03a31cdef7901b1568f7.dl.dropboxusercontent.com/zip_download_get/CNUR3hZnztGuHZ5ZfFOPDLfaJsIjJM_6e6HbwoAe4vcVgzmK_BXYU2pF3qdm_WvZfSvtPBSULfvRnTev3lSWPkcKnYNNO7-vbj7c2mCDpGU3sg?_download_id=07397952898526183608476346306342272657849788812195628884666902171&_log_download_success=1&_notify_domain=www.dropbox.com";
+
+    fetch(zipUrl)
+      .then(res => res.arrayBuffer())
+      .then(JSZip.loadAsync)
+      .then(zip => {
+        const imageFiles = [];
+        zip.forEach((_, file) => {
+          if (!file.dir && /\.(jpg|jpeg|png|gif|webp)$/i.test(file.name)) {
+            imageFiles.push(file);
+          }
+        });
+        imageFiles.forEach((file, i) => {
+          file.async("base64").then(base64 => {
+            const img = new Image();
+            img.src = `data:image/jpeg;base64,${base64}`;
+            img.alt = file.name;
+            img.loading = "lazy";
+            img.style.setProperty('--i', i + 1);
+            img.onclick = () => {
+              currentIndex = images.length;
+              openModal(img.src, img.alt);
+            };
+            gallery.appendChild(img);
+            images.push(img);
+          }).catch(err => console.error(`Error loading ${file.name}:`, err));
+        });
+      })
+      .catch(err => console.error("ZIP Load Error:", err));
+
+    function openModal(src, alt) {
+      modal.style.display = 'flex';
+      setTimeout(() => modal.classList.add('show'), 10);
+      modalImg.src = src;
+      modalImg.alt = alt;
+      downloadBtn.href = src;
+      resetZoom();
+    }
+
+    function closeModal() {
+      modal.classList.remove('show');
+      setTimeout(() => {
+        modal.style.display = 'none';
+        modalImg.src = '';
+      }, 300);
+    }
+
+    function navigateModal(direction) {
+      currentIndex = (currentIndex + direction + images.length) % images.length;
+      openModal(images[currentIndex].src, images[currentIndex].alt);
+    }
+
+    function resetZoom() {
+      scale = 1; translateX = 0; translateY = 0;
+      modalImg.style.transform = `scale(1) translate(0, 0)`;
+    }
+
+    modalImg.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      scale += e.deltaY * -0.001;
+      scale = Math.min(Math.max(0.5, scale), 3);
+      modalImg.style.transform = `scale(${scale}) translate(${translateX}px, ${translateY}px)`;
+    });
+
+    modalImg.addEventListener('mousedown', (e) => {
+      startX = e.clientX;
+      startY = e.clientY;
+      modalImg.style.cursor = 'grabbing';
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    });
+
+    function onMouseMove(e) {
+      translateX += (e.clientX - startX) / scale;
+      translateY += (e.clientY - startY) / scale;
+      startX = e.clientX;
+      startY = e.clientY;
+      modalImg.style.transform = `scale(${scale}) translate(${translateX}px, ${translateY}px)`;
+    }
+
+    function onMouseUp() {
+      modalImg.style.cursor = 'grab';
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    }
+
+    modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+
+    window.addEventListener('keydown', (e) => {
+      if (modal.classList.contains('show')) {
+        if (e.key === 'Escape') closeModal();
+        if (e.key === 'ArrowRight') navigateModal(1);
+        if (e.key === 'ArrowLeft') navigateModal(-1);
+      }
+    });
+
+    modalImg.addEventListener('touchstart', (e) => { startX = e.touches[0].clientX; });
+    modalImg.addEventListener('touchend', (e) => {
+      let endX = e.changedTouches[0].clientX;
+      if (endX - startX > 50) navigateModal(-1);
+      else if (startX - endX > 50) navigateModal(1);
+    });
+
+    // Particles
+    const canvas = document.getElementById('particles');
+    const ctx = canvas.getContext('2d');
+    let w, h, particles = [];
+
+    function resizeCanvas() {
+      w = canvas.width = window.innerWidth;
+      h = canvas.height = window.innerHeight;
+    }
+
+    function createParticles() {
+      particles = Array.from({length: 80}, () => ({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        r: Math.random() * 2 + 1,
+        dx: (Math.random() - 0.5) * 0.5,
+        dy: (Math.random() - 0.5) * 0.5
+      }));
+    }
+
+    function drawParticles() {
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = '#0ff';
+      particles.forEach(p => {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fill();
+        p.x += p.dx;
+        p.y += p.dy;
+        if (p.x < 0 || p.x > w) p.dx *= -1;
+        if (p.y < 0 || p.y > h) p.dy *= -1;
+      });
+      requestAnimationFrame(drawParticles);
+    }
+
+    window.addEventListener('resize', () => {
+      resizeCanvas();
+      createParticles();
+    });
+
+    window.addEventListener('click', () => {
+      if (bgMusic.paused) {
+        bgMusic.play().catch(e => console.log('Autoplay blocked:', e));
+      }
+    }, { once: true });
+
+    resizeCanvas();
+    createParticles();
+    drawParticles();
+  </script>
+</body>
+</html>
